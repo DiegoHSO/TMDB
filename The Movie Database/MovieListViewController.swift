@@ -7,9 +7,9 @@
 
 import UIKit
 
-class MovieListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+class MovieListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
     
-    @IBOutlet weak var searchBar: UISearchBar!
+    
     @IBOutlet weak var moviesTableView: UITableView!
     @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
     var popularMoviesPage: Int = 1
@@ -19,7 +19,7 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
     
     let movieDBService = MovieDBService()
     
-    var popularMovies: [Movie] = [] {
+    var filteredPopularMovies: [Movie] = [] {
         didSet {
             DispatchQueue.main.async {
                 self.moviesTableView.isHidden = self.popularMovies.isEmpty
@@ -28,18 +28,29 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
         }
     }
     
-    var nowPlayingMovies: [Movie] = [] {
+    var filteredNowPlayingMovies: [Movie] = [] {
         didSet {
             DispatchQueue.main.async {
-                self.moviesTableView.isHidden = self.nowPlayingMovies.isEmpty
-                self.activityIndicator.isHidden = !self.nowPlayingMovies.isEmpty
+                self.moviesTableView.isHidden = self.popularMovies.isEmpty
+                self.activityIndicator.isHidden = !self.popularMovies.isEmpty
             }
         }
     }
     
+    var popularMovies: [Movie] = []
+    
+    var nowPlayingMovies: [Movie] = []
+    
+    
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        let searchController = UISearchController(searchResultsController: nil)
+        navigationItem.searchController = searchController
+        searchController.searchResultsUpdater = self
+        searchController.obscuresBackgroundDuringPresentation = false
+        
         moviesTableView.dataSource = self
         moviesTableView.delegate = self
         
@@ -59,14 +70,17 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
             for index in 0...self.popularMovies.count-1 {
                 self.movieDBService.getMoviePoster(url: self.popularMovies[index].posterURL) { poster in
                     self.popularMovies[index].poster = poster
+                    self.updateData()
                 }
                 self.movieDBService.getGenres(genreIDs: self.popularMovies[index].genreIDs) { genres in
                     self.popularMovies[index].genres = genres
+                    self.updateData()
                 }
             }
-            DispatchQueue.main.async {
-                self.moviesTableView.reloadData()
-            }
+            //            DispatchQueue.main.async {
+            //                self.updateSearchResults(for: self.navigationItem.searchController!)
+            //                self.moviesTableView.reloadData()
+            //            }
             self.popularMoviesPage+=1
         }
         
@@ -75,15 +89,48 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
             for index in 0...self.nowPlayingMovies.count-1 {
                 self.movieDBService.getMoviePoster(url: self.nowPlayingMovies[index].posterURL) { poster in
                     self.nowPlayingMovies[index].poster = poster
+                    self.updateData()
                 }
                 self.movieDBService.getGenres(genreIDs: self.nowPlayingMovies[index].genreIDs) { genres in
                     self.nowPlayingMovies[index].genres = genres
+                    self.updateData()
                 }
             }
-            DispatchQueue.main.async {
-                self.moviesTableView.reloadData()
-            }
+            //            DispatchQueue.main.async {
+            //                self.updateSearchResults(for: self.navigationItem.searchController!)
+            //                self.moviesTableView.reloadData()
+            //            }
             self.nowPlayingMoviesPage+=1
+        }
+    }
+    
+    func updateData() {
+        DispatchQueue.main.async {
+            let searchText = self.navigationItem.searchController?.searchBar.text ?? ""
+            self.updateData(searchText: searchText)
+            self.moviesTableView.reloadData()
+        }
+    }
+    
+    func updateData(searchText: String) {
+        if searchText.isEmpty {
+            filteredPopularMovies = popularMovies
+            filteredNowPlayingMovies = nowPlayingMovies
+        }
+        
+        else {
+            filteredNowPlayingMovies = []
+            filteredPopularMovies = []
+            for movie in (popularMovies + nowPlayingMovies) {
+                if movie.title.lowercased().contains(searchText.lowercased()) {
+                    if popularMovies.contains(movie) && !filteredPopularMovies.contains(movie) {
+                        filteredPopularMovies.append(movie)
+                    }
+                    if nowPlayingMovies.contains(movie) && !filteredNowPlayingMovies.contains(movie) {
+                        filteredNowPlayingMovies.append(movie)
+                    }
+                }
+            }
         }
     }
     
@@ -93,10 +140,10 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
     
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if section == 0 {
-            return popularMovies.count+1
+            return filteredPopularMovies.count+1
         }
         else {
-            return nowPlayingMovies.count+1
+            return filteredNowPlayingMovies.count+1
         }
     }
     
@@ -106,7 +153,7 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
             if indexPath.row != 0 {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "movie", for: indexPath) as! MovieTableViewCell
                 
-                let movie = popularMovies[indexPath.row-1]
+                let movie = filteredPopularMovies[indexPath.row-1]
                 cell.titleLabel.text = movie.title
                 cell.descriptionLabel.text = movie.description
                 cell.rateLabel.text = movie.rating == 0 ? "TBD" : String(movie.rating)
@@ -127,7 +174,7 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
             if indexPath.row != 0 {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "movie", for: indexPath) as! MovieTableViewCell
                 
-                let movie = nowPlayingMovies[indexPath.row-1]
+                let movie = filteredNowPlayingMovies[indexPath.row-1]
                 cell.titleLabel.text = movie.title
                 cell.descriptionLabel.text = movie.description
                 cell.rateLabel.text = movie.rating == 0 ? "TBD" : String(movie.rating)
@@ -146,11 +193,11 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if indexPath.section == 0 {
-            let movie = popularMovies[indexPath.row-1]
+            let movie = filteredPopularMovies[indexPath.row-1]
             performSegue(withIdentifier: "detail", sender: movie)
         }
         else {
-            let movie = nowPlayingMovies[indexPath.row-1]
+            let movie = filteredNowPlayingMovies[indexPath.row-1]
             performSegue(withIdentifier: "detail", sender: movie)
         }
         
@@ -160,19 +207,19 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
         // Lembrem-se de colocar um booleano pra controlar as requisições
         // E lembrem-se de controlarem em que página estamos para pedirmos apenas a próxima
         if (indexPath.section == 0) {
-            if (indexPath.row == popularMovies.count - 1 && popularMoviesPage <= popularMoviesTotalPages) {
+            if (indexPath.row == filteredPopularMovies.count - 1 && popularMoviesPage <= popularMoviesTotalPages) {
                 movieDBService.getPopularMovies(page: popularMoviesPage) { movies in
                     self.popularMovies = self.popularMovies + movies
                     for index in 0...self.popularMovies.count-1 {
                         self.movieDBService.getMoviePoster(url: self.popularMovies[index].posterURL) { poster in
                             self.popularMovies[index].poster = poster
+                            self.updateData()
                         }
                         self.movieDBService.getGenres(genreIDs: self.popularMovies[index].genreIDs) { genres in
                             self.popularMovies[index].genres = genres
+                            self.updateData()
+                            
                         }
-                    }
-                    DispatchQueue.main.async {
-                        self.moviesTableView.reloadData()
                     }
                     self.popularMoviesPage+=1
                 }
@@ -180,20 +227,19 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
         }
         
         else {
-            if (indexPath.row == nowPlayingMovies.count - 1 && nowPlayingMoviesPage <= nowPlayingMoviesTotalPages) {
+            if (indexPath.row == filteredNowPlayingMovies.count - 1 && nowPlayingMoviesPage <= nowPlayingMoviesTotalPages) {
                 movieDBService.getPopularMovies(page: nowPlayingMoviesPage) { movies in
                     
                     self.nowPlayingMovies = self.nowPlayingMovies + movies
                     for index in 0...self.nowPlayingMovies.count-1 {
                         self.movieDBService.getMoviePoster(url: self.nowPlayingMovies[index].posterURL) { poster in
                             self.nowPlayingMovies[index].poster = poster
+                            self.updateData()
                         }
                         self.movieDBService.getGenres(genreIDs: self.nowPlayingMovies[index].genreIDs) { genres in
                             self.nowPlayingMovies[index].genres = genres
+                            self.updateData()
                         }
-                    }
-                    DispatchQueue.main.async {
-                        self.moviesTableView.reloadData()
                     }
                     self.nowPlayingMoviesPage+=1
                 }
@@ -211,8 +257,13 @@ class MovieListViewController: UIViewController, UITableViewDataSource, UITableV
         movieDetailViewController?.movie = movie
     }
     
+    func updateSearchResults(for searchController: UISearchController) {
+        let searchText = searchController.searchBar.text ?? ""
+        self.updateData(searchText: searchText)
+        self.moviesTableView.reloadData()
+    }
+    
 }
-
 
 
 /*

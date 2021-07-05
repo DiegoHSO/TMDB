@@ -9,7 +9,7 @@ import Foundation
 import UIKit
 
 // MARK: Movie Struct
-struct Movie: CustomStringConvertible {
+struct Movie: CustomStringConvertible, Equatable {
     let id: Int
     let title: String
     let description: String
@@ -18,6 +18,10 @@ struct Movie: CustomStringConvertible {
     var poster: UIImage?
     var genreIDs: [Int]
     var genres: [String]?
+    
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        return lhs.id == rhs.id && lhs.title == rhs.title && lhs.description == rhs.description
+    }
 }
 
 struct Genre {
